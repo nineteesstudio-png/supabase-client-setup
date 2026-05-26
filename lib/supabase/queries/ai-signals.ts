@@ -182,16 +182,16 @@ export async function closeSignal(
 
 /**
  * Fetches signal performance statistics
+ * Note: Function only allows users to query their own statistics (RLS enforced)
  */
 export async function fetchSignalStats(
   supabase: SupabaseClient,
-  userId?: string,
   ticker?: string,
   days: number = 30
 ): Promise<{ data: any | null; error: Error | null }> {
   try {
+    // Call without user_id parameter - function will use auth.uid() automatically
     const { data, error } = await supabase.rpc('get_signal_performance_stats', {
-      p_user_id: userId || null,
       p_ticker: ticker || null,
       p_days: days
     })

@@ -83,6 +83,8 @@ A pre-filtered view showing only active signals with calculated fields:
 - `is_expired` - Computed boolean showing if signal has expired
 - `potential_return_pct` - Calculated potential return percentage
 
+**Security**: Uses SECURITY INVOKER (default) - respects RLS policies, users only see their own signals.
+
 ## Functions
 
 ### `get_signal_performance_stats()`
@@ -97,9 +99,14 @@ Calculates comprehensive performance metrics:
 - Signal type distribution
 
 Parameters:
-- `p_user_id` (optional) - Filter by user
 - `p_ticker` (optional) - Filter by ticker
 - `p_days` (default: 30) - Time period in days
+
+**Security**:
+- Uses SECURITY INVOKER - runs with caller's privileges
+- Enforces RLS - users can only query their own data
+- Only accessible to authenticated users
+- Immutable search_path prevents SQL injection
 
 ### `close_expired_signals()`
 
@@ -107,6 +114,12 @@ Automatically closes expired signals:
 - Updates `is_active` to false
 - Sets `signal_status` to 'expired'
 - Records `closed_at` timestamp
+
+**Security**:
+- Uses SECURITY DEFINER for elevated privileges (needed to update any expired signal)
+- Immutable search_path prevents SQL injection
+- Only accessible by database owner/service_role
+- Not publicly executable (used by scheduled jobs only)
 
 ### `update_updated_at_column()`
 
@@ -192,11 +205,11 @@ const { data: signals, error } = await fetchActiveSignals(supabase, userId)
 ```typescript
 import { fetchSignalStats } from "@/lib/supabase/queries/ai-signals"
 
-// Get stats for last 30 days
-const { data: stats, error } = await fetchSignalStats(supabase, userId, null, 30)
+// Get stats for last 30 days (automatically uses current user's data)
+const { data: stats, error } = await fetchSignalStats(supabase, null, 30)
 
 // Get stats for specific ticker
-const { data: stats, error } = await fetchSignalStats(supabase, userId, "BBCA", 60)
+const { data: stats, error } = await fetchSignalStats(supabase, "BBCA", 60)
 ```
 
 ### Closing a Signal
@@ -224,8 +237,12 @@ const { data, error } = await closeSignal(supabase, signalId, {
 
 ## Security Considerations
 
-- RLS ensures complete data isolation between users
-- Foreign key constraints maintain referential integrity
-- Check constraints ensure data validity (e.g., confidence 0-100)
-- Enum types prevent invalid values
-- Cascading deletes keep data consistent
+- **Row Level Security (RLS)**: Complete data isolation between users - enforced on all tables and views
+- **SECURITY INVOKER Functions**: `get_signal_performance_stats()` runs with caller's privileges, respecting RLS
+- **Immutable Search Paths**: All functions use `SET search_path = ''` to prevent SQL injection via search path manipulation
+- **No Public Access**: `close_expired_signals()` is restricted to database owner/service_role only
+- **Foreign Key Constraints**: Maintain referential integrity with CASCADE rules
+- **Check Constraints**: Ensure data validity (e.g., confidence 0-100, valid enums)
+- **Enum Types**: Prevent invalid values and ensure type safety
+- **Cascading Deletes**: Keep data consistent when users are deleted
+- **Function-Level Authorization**: Users can only access their own statistics, enforced in function logic
